@@ -59,7 +59,7 @@ def test_contradiction_detection_flags_conflicting_fact(semantic, scripted_llm):
     assert "dependency injection" in contradictions[0]["text"]
 
 
-def test_refinement_decays_old_fact_confidence(semantic, scripted_llm):
+def test_refinement_decays_old_fact_trust(semantic, scripted_llm):
     scripted_llm.queue({"facts": [{"text": "API uses REST endpoints", "confidence": 0.9}]})
     semantic.consolidate([{"id": "e1", "text": "API uses REST"}], repo="repo-a")
 
@@ -70,4 +70,45 @@ def test_refinement_decays_old_fact_confidence(semantic, scripted_llm):
     semantic.consolidate([{"id": "e2", "text": "API added GraphQL for v2"}], repo="repo-a")
 
     old_meta = semantic.collection.get(ids=[first_fact_id])["metadatas"][0]
-    assert old_meta["confidence"] < 0.9  # decayed, not left at original value
+    assert old_meta["trust"] < 0.9  # decayed, not left at original value
+    assert old_meta["confidence"] == 0.9  # original confidence untouched — trust is the live signal
+
+
+def test_corroboration_increases_trust_and_does_not_duplicate(semantic, scripted_llm):
+    scripted_llm.queue({"facts": [{"text": "Team uses dependency injection for DB access", "confidence": 0.6}]})
+    semantic.consolidate([{"id": "e1", "text": "DI adopted for DB client"}], repo="repo-a")
+
+    before = semantic.collection.get(where={"repo": "repo-a"})
+    assert len(before["ids"]) == 1
+    fact_id = before["ids"][0]
+    assert before["metadatas"][0]["trust"] == 0.6
+    assert before["metadatas"][0]["corroboration_count"] == 0
+
+    # A second, independent batch restates the same fact — scripted as a corroboration.
+    scripted_llm.queue({"facts": [{"text": "Team uses dependency injection for DB access again", "confidence": 0.7}]})
+    scripted_llm.queue({"verdict": "corroboration", "reasoning": "Same fact restated, no new detail"})
+    new_facts = semantic.consolidate([{"id": "e2", "text": "Code review reaffirmed DI usage"}], repo="repo-a")
+
+    # Corroboration should not create a second fact.
+    assert new_facts == []
+    after = semantic.collection.get(where={"repo": "repo-a"})
+    assert len(after["ids"]) == 1
+
+    after_meta = after["metadatas"][0]
+    assert after_meta["trust"] > 0.6  # moved up from corroboration
+    assert after_meta["corroboration_count"] == 1
+    assert "e2" in after_meta["source_episodic_ids"]  # new source folded in
+    assert after["ids"][0] == fact_id  # same fact, reinforced not duplicated
+
+
+def test_trust_label_reflects_corroboration_history():
+    from mnemosyne.memory.semantic import SemanticMemory
+
+    strong = {"trust": 0.85, "corroboration_count": 3}
+    assert "well-established" in SemanticMemory.trust_label(strong)
+
+    shaky = {"trust": 0.3, "corroboration_count": 0}
+    assert "low trust" in SemanticMemory.trust_label(shaky)
+
+    once_stated = {"trust": 0.5, "corroboration_count": 0}
+    assert "treat with some caution" in SemanticMemory.trust_label(once_stated)

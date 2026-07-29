@@ -72,6 +72,7 @@ class EpisodicMemory:
                 "tags": ",".join(entry.tags),
                 "access_count": 0,
                 "last_accessed": entry.last_accessed,
+                "consolidated": False,
             }],
         )
         return entry
@@ -90,9 +91,10 @@ class EpisodicMemory:
         return self._format_results(results)
 
     def get_since(self, repo: str, since_timestamp: float) -> List[dict]:
-        """Fetch all entries newer than a given timestamp — this is what
-        the consolidation trigger uses to grab the latest unconsolidated
-        batch."""
+        """Fetch all entries newer than a given timestamp. Kept for
+        callers/eval scripts that want a time-window view; consolidation
+        itself uses get_unconsolidated() instead, since a timestamp
+        checkpoint doesn't survive across separate script runs/sessions."""
         results = self.collection.get(
             where={"$and": [{"repo": repo}, {"timestamp": {"$gt": since_timestamp}}]},
         )
@@ -100,6 +102,29 @@ class EpisodicMemory:
             {"id": id_, "text": doc, "metadata": meta}
             for id_, doc, meta in zip(results["ids"], results["documents"], results["metadatas"])
         ]
+
+    def get_unconsolidated(self, repo: str) -> List[dict]:
+        """Entries not yet folded into semantic memory. This is durable
+        across sessions (it's a flag stored on each entry in Chroma, not
+        an in-memory checkpoint), so restarting the process or running a
+        fresh script doesn't cause entries to be re-consolidated."""
+        results = self.collection.get(
+            where={"$and": [{"repo": repo}, {"consolidated": False}]},
+        )
+        return [
+            {"id": id_, "text": doc, "metadata": meta}
+            for id_, doc, meta in zip(results["ids"], results["documents"], results["metadatas"])
+        ]
+
+    def mark_consolidated(self, entry_ids: List[str]):
+        if not entry_ids:
+            return
+        existing = self.collection.get(ids=entry_ids)
+        updated_metas = []
+        for meta in existing["metadatas"]:
+            meta["consolidated"] = True
+            updated_metas.append(meta)
+        self.collection.update(ids=existing["ids"], metadatas=updated_metas)
 
     def mark_accessed(self, entry_id: str):
         existing = self.collection.get(ids=[entry_id])

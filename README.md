@@ -47,7 +47,7 @@ cached locally (`~/.cache/huggingface`).
 ## Quick usage
 
 ```python
-from mnemosyne import MemoryStore
+
 
 memory = MemoryStore()
 

@@ -51,3 +51,15 @@ class MnemosyneConfig:
     # same thing" as an existing semantic fact (candidate for merge or
     # contradiction check).
     semantic_similarity_threshold: float = 0.80
+
+    # --- Trust / corroboration tracking ---
+    # When a new fact corroborates an existing one, trust moves toward 1.0
+    # by this fraction of the remaining distance (e.g. 0.7 -> 0.7*(1-trust)
+    # added each time). Diminishing returns as trust approaches 1.0.
+    corroboration_boost: float = 0.3
+    # When a new fact contradicts an existing one, trust is multiplied by
+    # this factor (separate from the softer refinement decay).
+    contradiction_penalty: float = 0.4
+    # When a new fact merely refines/adds detail to an existing one, the
+    # old fact's trust decays by this factor (superseded, not wrong).
+    refinement_decay: float = 0.5

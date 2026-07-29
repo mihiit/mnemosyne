@@ -27,8 +27,12 @@ from mnemosyne.memory.store import MemoryStore
 
 AGENT_SYSTEM_PROMPT = """You are a coding agent working on a specific repository over \
 many sessions. You are given relevant memory from past sessions (durable facts and \
-specific past events) before each task. Use this memory to avoid repeating past \
-mistakes and to stay consistent with past decisions. If memory conflicts with what \
+specific past events) before each task. Each durable fact is tagged with a trust level \
+in brackets (e.g. "well-established (reinforced 3x)" vs "stated once, not since \
+reinforced"). Calibrate your own confidence in your response to match: state \
+well-established facts plainly, but explicitly flag when you're relying on something \
+that's only been stated once and never corroborated. Use this memory to avoid repeating \
+past mistakes and to stay consistent with past decisions. If memory conflicts with what \
 seems reasonable for the current task, say so explicitly rather than ignoring it."""
 
 TASK_PROMPT_TEMPLATE = """# Repo: {repo}
@@ -70,7 +74,7 @@ class MemoryAugmentedAgent:
 
     def _build_prompt(self, task: str, recalled: dict) -> str:
         semantic_text = "\n".join(
-            f"- {f['text']} (similarity {f['similarity']:.2f})"
+            f"- {f['text']} [{f.get('trust_label', 'confidence unknown')}]"
             for f in recalled["semantic_facts"]
         ) or "(none yet)"
 

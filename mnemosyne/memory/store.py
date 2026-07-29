@@ -36,10 +36,6 @@ class MemoryStore:
         self.semantic = SemanticMemory(self.config, self.embedder, self.llm, self.client)
         self.retrieval = RetrievalEngine(self.config, self.episodic, self.semantic)
 
-        # Tracks, per repo, the timestamp of the last consolidation pass,
-        # so we know which episodic entries are "new" since then.
-        self._last_consolidated: dict = {}
-
     def remember(self, text: str, repo: str, task_id: Optional[str] = None, tags: Optional[List[str]] = None):
         self.episodic.add(text, repo=repo, task_id=task_id, tags=tags)
         self._maybe_consolidate(repo)
@@ -57,19 +53,19 @@ class MemoryStore:
         return self.semantic.get_contradictions(repo)
 
     def _maybe_consolidate(self, repo: str):
-        last = self._last_consolidated.get(repo, 0)
-        new_entries = self.episodic.get_since(repo, since_timestamp=last)
-        if len(new_entries) >= self.config.consolidation_batch_size:
-            self.semantic.consolidate(new_entries, repo=repo)
-            self._last_consolidated[repo] = max(e["metadata"]["timestamp"] for e in new_entries)
+        unconsolidated = self.episodic.get_unconsolidated(repo)
+        if len(unconsolidated) >= self.config.consolidation_batch_size:
+            self.semantic.consolidate(unconsolidated, repo=repo)
+            self.episodic.mark_consolidated([e["id"] for e in unconsolidated])
 
     def force_consolidate(self, repo: str):
         """Manually trigger consolidation regardless of batch size —
         useful in eval scripts where you want deterministic control over
-        when consolidation happens."""
-        last = self._last_consolidated.get(repo, 0)
-        new_entries = self.episodic.get_since(repo, since_timestamp=last)
-        facts = self.semantic.consolidate(new_entries, repo=repo)
-        if new_entries:
-            self._last_consolidated[repo] = max(e["metadata"]["timestamp"] for e in new_entries)
+        when consolidation happens. Only touches entries not already
+        consolidated, so calling this repeatedly (e.g. across separate
+        script runs in the same repo) won't re-consolidate old entries."""
+        unconsolidated = self.episodic.get_unconsolidated(repo)
+        facts = self.semantic.consolidate(unconsolidated, repo=repo)
+        if unconsolidated:
+            self.episodic.mark_consolidated([e["id"] for e in unconsolidated])
         return facts
