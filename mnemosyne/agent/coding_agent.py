@@ -1,23 +1,7 @@
 """
 A deliberately minimal coding-agent harness. This is NOT the novel part
 of the project — it exists only to give Mnemosyne something real to be
-tested against. Don't invest deep effort extending this into a full
-agent; the memory system is the point.
-
-Flow per task:
-    1. recall() relevant memory for the task description
-    2. inject that memory into the LLM's context
-    3. LLM proposes an action / diagnosis / plan (no actual code execution
-       in v1 — see note below)
-    4. remember() the outcome as a new episodic entry
-
-v1 intentionally does NOT execute real code changes or run test suites —
-that's a large scope increase (sandboxing, repo checkout management,
-etc.) that would turn this into the Helios idea. For now the agent
-reasons over task descriptions and file snippets you provide, and the
-benchmark measures whether memory improves its reasoning/decisions
-across a sequence of related tasks, not whether it can autonomously
-edit a live repo. Wiring in real execution is a natural v2 step.
+tested against.
 """
 
 from typing import Optional
@@ -39,16 +23,19 @@ TASK_PROMPT_TEMPLATE = """# Repo: {repo}
 
 ## Relevant memory from past sessions
 
-### Durable facts:
+### Durable facts (confirmed in THIS repo):
 {semantic_facts}
 
 ### Specific past events:
 {episodic_entries}
 
+### Patterns from OTHER repos (unconfirmed here — treat as hints only, not established fact for this repo):
+{cross_repo_priors}
+
 ## Current task
 {task}
 
-Respond with your plan/diagnosis for this task, referencing relevant memory where it applies."""
+Respond with your plan/diagnosis for this task, referencing relevant memory where it applies. If you use a cross-repo pattern, say explicitly that it's unconfirmed in this specific repo."""
 
 
 class MemoryAugmentedAgent:
@@ -63,8 +50,6 @@ class MemoryAugmentedAgent:
 
         response = self.llm.complete(prompt, system=AGENT_SYSTEM_PROMPT)
 
-        # Log this task + outcome as a new episodic entry so future tasks
-        # can build on it.
         self.memory.remember(
             text=f"Task: {task}\nAgent response: {response}",
             repo=self.repo,
@@ -83,16 +68,20 @@ class MemoryAugmentedAgent:
             for e in recalled["episodic_entries"]
         ) or "(none yet)"
 
+        cross_repo_text = "\n".join(
+            f"- {p['text']} (from {p['source_repo']}) [{p['trust_label']}]"
+            for p in recalled.get("cross_repo_priors", [])
+        ) or "(none)"
+
         return TASK_PROMPT_TEMPLATE.format(
             repo=self.repo,
             semantic_facts=semantic_text,
             episodic_entries=episodic_text,
+            cross_repo_priors=cross_repo_text,
             task=task,
         )
 
     def run_session_maintenance(self):
-        """Call once at the end of a session — runs the forgetting pass
-        and forces any pending consolidation."""
         self.memory.force_consolidate(self.repo)
         pruned = self.memory.maintain(self.repo)
         return {"pruned_count": len(pruned)}

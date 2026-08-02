@@ -13,10 +13,10 @@ class NullMemoryStore:
         self.config = config or MnemosyneConfig()
 
     def remember(self, text: str, repo: str, task_id: str = None, tags=None):
-        pass  # intentionally does not persist anything
+        pass
 
     def recall(self, query: str, repo: str, top_k: int = None) -> dict:
-        return {"semantic_facts": [], "episodic_entries": []}
+        return {"semantic_facts": [], "episodic_entries": [], "cross_repo_priors": []}
 
     def maintain(self, repo: str):
         return []

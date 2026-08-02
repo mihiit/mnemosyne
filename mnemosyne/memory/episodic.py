@@ -22,6 +22,7 @@ import chromadb
 
 from mnemosyne.config import MnemosyneConfig
 from mnemosyne.memory.embeddings import Embedder
+from mnemosyne.memory.chroma_utils import safe_query
 
 
 @dataclass
@@ -82,8 +83,12 @@ class EpisodicMemory:
         the consolidation pass to pull recent related entries, and by
         eval scripts. Agent-facing retrieval should go through
         retrieval.py instead, which applies recency/frequency weighting."""
+        if self.collection.count() == 0:
+            return []
+
         query_embedding = self.embedder.embed(text)
-        results = self.collection.query(
+        results = safe_query(
+            self.collection,
             query_embeddings=[query_embedding],
             n_results=top_k,
             where={"repo": repo},

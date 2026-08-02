@@ -29,6 +29,7 @@ from typing import List, Optional
 import chromadb
 
 from mnemosyne.config import MnemosyneConfig
+from mnemosyne.memory.chroma_utils import safe_query
 from mnemosyne.memory.embeddings import Embedder
 from mnemosyne.memory.llm import LocalLLM
 
@@ -47,6 +48,8 @@ class SemanticFact:
     corroboration_count: int = 0
     contradiction_count: int = 0
     last_reinforced_at: Optional[float] = None
+    resolved: bool = False  # True once a contradiction involving this fact has been auto-resolved or manually settled
+    resolution: Optional[str] = None  # "supersedes_old" | "superseded_by_new" | "rejected_favor_of_old" | "reaffirmed_against_new" | None
 
 
 CONSOLIDATION_SYSTEM_PROMPT = """You are a memory-consolidation module for a coding agent. \
@@ -127,23 +130,17 @@ class SemanticMemory:
         if similar:
             verdict = self._check_contradiction(similar["text"], text)
             verdict_type = verdict.get("verdict")
+            if verdict_type == "corroboration" and not self.config.enable_corroboration:
+                verdict_type = "different"  # ablation: treat as independent, no reinforcement
 
             if verdict_type == "corroboration":
-                # This is not a new fact — it's evidence for an existing
-                # one. Reinforce the old fact's trust and don't create a
-                # duplicate entry.
                 self._reinforce(similar["id"], source_episodic_ids)
                 return None
             elif verdict_type == "contradiction":
                 contradicted_by = similar["id"]
                 self._apply_contradiction(similar["id"])
             elif verdict_type == "refinement":
-                # Treat a refinement as superseding the old fact: lower
-                # the old fact's trust rather than deleting it — deleting
-                # would lose history we might want later.
                 self._decay_trust(similar["id"], factor=self.config.refinement_decay)
-            # "different" (or any unrecognized verdict) -> fall through
-            # and create a new, independent fact as normal.
 
         now = time.time()
         fact = SemanticFact(
@@ -173,13 +170,21 @@ class SemanticMemory:
                 "corroboration_count": 0,
                 "contradiction_count": 0,
                 "last_reinforced_at": 0.0,
+                "resolved": False,
+                "resolution": "",
             }],
         )
+        if contradicted_by and self.config.enable_active_contradiction_resolution:
+            self._attempt_auto_resolution(old_id=contradicted_by, new_id=fact.id)
         return fact
 
     def _find_similar(self, text: str, repo: str) -> Optional[dict]:
+        if self.collection.count() == 0:
+            return None
+
         embedding = self.embedder.embed(text)
-        results = self.collection.query(
+        results = safe_query(
+            self.collection,
             query_embeddings=[embedding],
             n_results=1,
             where={"repo": repo},
@@ -198,10 +203,6 @@ class SemanticMemory:
         return self.llm.complete_json(prompt, system=CONTRADICTION_SYSTEM_PROMPT)
 
     def _reinforce(self, fact_id: str, new_source_ids: List[str]):
-        """Corroboration: move trust toward 1.0 by corroboration_boost
-        of the remaining distance, so trust asymptotically approaches
-        (but never quite reaches) 1.0 — repeated corroboration keeps
-        strengthening a fact, with diminishing returns."""
         existing = self.collection.get(ids=[fact_id])
         if not existing["ids"]:
             return
@@ -219,10 +220,6 @@ class SemanticMemory:
         self.collection.update(ids=[fact_id], metadatas=[meta])
 
     def _apply_contradiction(self, fact_id: str):
-        """Contradiction: multiply trust down by contradiction_penalty —
-        a harder hit than a refinement decay, since a genuine conflict
-        (not just added detail) means the old fact is now questionable,
-        not just outdated."""
         existing = self.collection.get(ids=[fact_id])
         if not existing["ids"]:
             return
@@ -243,23 +240,123 @@ class SemanticMemory:
         meta["updated_at"] = time.time()
         self.collection.update(ids=[fact_id], metadatas=[meta])
 
+    def _attempt_auto_resolution(self, old_id: str, new_id: str):
+        """Active contradiction resolution: instead of leaving every
+        contradiction flagged forever for a human to sort out, compare
+        trust levels and auto-resolve clear-cut cases. If the trust gap
+        is at least contradiction_auto_resolve_margin, the higher-trust
+        fact wins and the loser's trust is further suppressed. If the gap
+        is smaller than that, the contradiction is genuinely ambiguous
+        and is left unresolved (still visible via get_contradictions) for
+        a human or the agent to judge explicitly — auto-resolving a close
+        call would be worse than flagging it."""
+        old_existing = self.collection.get(ids=[old_id])
+        new_existing = self.collection.get(ids=[new_id])
+        if not old_existing["ids"] or not new_existing["ids"]:
+            return
+
+        old_meta = old_existing["metadatas"][0]
+        new_meta = new_existing["metadatas"][0]
+        old_trust = float(old_meta.get("trust", old_meta.get("confidence", 0.5)))
+        new_trust = float(new_meta.get("trust", new_meta.get("confidence", 0.5)))
+        gap = new_trust - old_trust
+
+        if gap >= self.config.contradiction_auto_resolve_margin:
+            old_meta["trust"] = old_trust * 0.1
+            old_meta["resolved"] = True
+            old_meta["resolution"] = "superseded_by_new"
+            new_meta["resolved"] = True
+            new_meta["resolution"] = "supersedes_old"
+        elif gap <= -self.config.contradiction_auto_resolve_margin:
+            new_meta["trust"] = new_trust * 0.1
+            new_meta["resolved"] = True
+            new_meta["resolution"] = "rejected_favor_of_old"
+            old_meta["trust"] = old_trust + self.config.corroboration_boost * (1.0 - old_trust)
+            old_meta["resolved"] = True
+            old_meta["resolution"] = "reaffirmed_against_new"
+        else:
+            return
+
+        old_meta["updated_at"] = time.time()
+        new_meta["updated_at"] = time.time()
+        self.collection.update(ids=[old_id, new_id], metadatas=[old_meta, new_meta])
+
+    def resolve_contradiction_manually(self, fact_id: str, other_fact_id: str, winner_id: str):
+        """Let a human (or the agent, if explicitly instructed) resolve an
+        ambiguous contradiction that auto-resolution left pending."""
+        loser_id = other_fact_id if winner_id == fact_id else fact_id
+        winner_existing = self.collection.get(ids=[winner_id])
+        loser_existing = self.collection.get(ids=[loser_id])
+        if not winner_existing["ids"] or not loser_existing["ids"]:
+            return
+
+        winner_meta = winner_existing["metadatas"][0]
+        loser_meta = loser_existing["metadatas"][0]
+        loser_trust = float(loser_meta.get("trust", loser_meta.get("confidence", 0.5)))
+
+        winner_meta["resolved"] = True
+        winner_meta["resolution"] = "manually_confirmed"
+        loser_meta["resolved"] = True
+        loser_meta["resolution"] = "manually_rejected"
+        loser_meta["trust"] = loser_trust * 0.1
+        winner_meta["updated_at"] = time.time()
+        loser_meta["updated_at"] = time.time()
+        self.collection.update(ids=[winner_id, loser_id], metadatas=[winner_meta, loser_meta])
+
+    def query_cross_repo_priors(self, text: str, exclude_repo: str, top_k: int = 3) -> List[dict]:
+        """Cold-start bootstrap: when a repo has no relevant memory of its
+        own yet, look at what other repos have learned as a starting
+        point — NOT as established fact for this repo, just a suggestion
+        worth checking. This is deliberately narrow: a same-process,
+        same-embedding-space lookup across repos already in this Chroma
+        store. It is NOT general meta-learning or transfer learning across
+        arbitrary codebases — just reuse of patterns already collected
+        locally, clearly labeled as unconfirmed."""
+        if self.collection.count() == 0:
+            return []
+
+        embedding = self.embedder.embed(text)
+        results = safe_query(
+            self.collection,
+            query_embeddings=[embedding],
+            n_results=top_k + 15,
+        )
+        ids = results.get("ids", [[]])[0]
+        docs = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+
+        priors = []
+        for id_, doc, meta, dist in zip(ids, docs, metas, distances):
+            if meta.get("repo") == exclude_repo:
+                continue
+            priors.append({
+                "id": id_,
+                "text": doc,
+                "source_repo": meta.get("repo"),
+                "similarity": 1 - dist,
+                "trust_label": "cross-repo prior — unconfirmed in this repo, treat as a hint only",
+            })
+            if len(priors) >= top_k:
+                break
+        return priors
+
     def get_contradictions(self, repo: str) -> List[dict]:
-        """Return all facts currently flagged as contradicting another
-        fact — this is what an agent or a human reviewer would check
-        before trusting memory blindly."""
+        """Return contradictions that are still PENDING review."""
         results = self.collection.get(where={"repo": repo})
         flagged = []
         for id_, doc, meta in zip(results["ids"], results["documents"], results["metadatas"]):
-            if meta.get("contradicted_by"):
-                flagged.append({"id": id_, "text": doc, "contradicted_by": meta["contradicted_by"]})
+            if meta.get("contradicted_by") and not meta.get("resolved"):
+                flagged.append({
+                    "id": id_,
+                    "text": doc,
+                    "contradicted_by": meta["contradicted_by"],
+                    "trust": meta.get("trust"),
+                })
         return flagged
 
     @staticmethod
     def trust_label(meta: dict) -> str:
-        """Human/agent-readable calibration label derived from trust
-        score + corroboration history — this is what gets surfaced in
-        the agent's prompt so it can hedge appropriately instead of
-        treating every retrieved fact as equally certain."""
         trust = float(meta.get("trust", meta.get("confidence", 0.5)))
         corroborations = int(meta.get("corroboration_count", 0))
 
@@ -273,8 +370,12 @@ class SemanticMemory:
             return "low trust — has been contradicted or heavily superseded"
 
     def query(self, text: str, repo: str, top_k: int = 5) -> List[dict]:
+        if self.collection.count() == 0:
+            return []
+
         embedding = self.embedder.embed(text)
-        results = self.collection.query(
+        results = safe_query(
+            self.collection,
             query_embeddings=[embedding],
             n_results=top_k,
             where={"repo": repo},

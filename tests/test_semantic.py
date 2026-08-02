@@ -41,17 +41,49 @@ def test_consolidate_handles_no_durable_facts(semantic, scripted_llm):
     assert facts == []
 
 
-def test_contradiction_detection_flags_conflicting_fact(semantic, scripted_llm):
+def test_contradiction_auto_resolves_when_trust_gap_is_large(semantic, scripted_llm):
     # First fact: no similar fact exists yet, so _find_similar returns None
     # and no contradiction check is made.
     scripted_llm.queue({"facts": [{"text": "This repo uses singletons for DB access", "confidence": 0.7}]})
     semantic.consolidate([{"id": "e1", "text": "DB client is a singleton"}], repo="repo-a")
 
     # Second fact: similar in embedding space (shares words), and we
-    # script the LLM to say it's a contradiction.
+    # script the LLM to say it's a contradiction. Old fact's trust drops
+    # to 0.7*0.4=0.28 after the contradiction penalty; new fact's
+    # confidence is 0.8 — gap of 0.52 clears the auto-resolve margin (0.2),
+    # so this should auto-resolve in favor of the new fact rather than
+    # sitting in get_contradictions() forever.
     scripted_llm.queue({"facts": [{"text": "This repo uses dependency injection for DB access", "confidence": 0.8}]})
     scripted_llm.queue({"verdict": "contradiction", "reasoning": "DI and singleton are conflicting patterns"})
 
+    semantic.consolidate([{"id": "e2", "text": "Team switched DB client to DI"}], repo="repo-a")
+
+    # Auto-resolved contradictions are no longer "pending" — get_contradictions
+    # only returns genuinely ambiguous, unresolved ones.
+    contradictions = semantic.get_contradictions("repo-a")
+    assert len(contradictions) == 0
+
+    all_facts = semantic.collection.get(where={"repo": "repo-a"})
+    metas_by_text = dict(zip(all_facts["documents"], all_facts["metadatas"]))
+    old_meta = metas_by_text["This repo uses singletons for DB access"]
+    new_meta = metas_by_text["This repo uses dependency injection for DB access"]
+
+    assert old_meta["resolved"] is True
+    assert old_meta["resolution"] == "superseded_by_new"
+    assert old_meta["trust"] < 0.28  # further suppressed beyond the contradiction penalty
+    assert new_meta["resolved"] is True
+    assert new_meta["resolution"] == "supersedes_old"
+
+
+def test_contradiction_stays_pending_when_trust_gap_is_small(semantic, scripted_llm):
+    # Old fact starts at 0.7, contradiction penalty (0.4) drops it to 0.28.
+    # A new fact with confidence close to 0.28 (e.g. 0.35) keeps the gap
+    # under the 0.2 auto-resolve margin, so this should stay ambiguous.
+    scripted_llm.queue({"facts": [{"text": "This repo uses singletons for DB access", "confidence": 0.7}]})
+    semantic.consolidate([{"id": "e1", "text": "DB client is a singleton"}], repo="repo-a")
+
+    scripted_llm.queue({"facts": [{"text": "This repo uses dependency injection for DB access", "confidence": 0.35}]})
+    scripted_llm.queue({"verdict": "contradiction", "reasoning": "DI and singleton are conflicting patterns"})
     semantic.consolidate([{"id": "e2", "text": "Team switched DB client to DI"}], repo="repo-a")
 
     contradictions = semantic.get_contradictions("repo-a")

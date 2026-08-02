@@ -27,14 +27,19 @@ class RetrievalEngine:
         self.semantic = semantic
 
     def retrieve(self, query: str, repo: str, top_k: int = None) -> dict:
-        """Retrieve the most relevant memory for a given query, combining
-        semantic facts (preferred — they're distilled and durable) with
-        episodic entries (for specific recent detail semantic memory
-        hasn't consolidated yet)."""
         top_k = top_k or self.config.retrieval_top_k
 
-        semantic_hits = self.semantic.query(query, repo, top_k=top_k)
+        # Pull a wider candidate pool than top_k from raw similarity search,
+        # so trust-based reranking has real facts to work with.
+        candidate_pool_size = top_k * 3
+        semantic_candidates = self.semantic.query(query, repo, top_k=candidate_pool_size)
         episodic_hits = self.episodic.query(query, repo, top_k=top_k)
+
+        scored_semantic = [
+            {**hit, "retrieval_score": self._semantic_score(hit)}
+            for hit in semantic_candidates
+        ]
+        scored_semantic.sort(key=lambda h: h["retrieval_score"], reverse=True)
 
         scored_episodic = [
             {**hit, "importance": self._importance_score(hit)}
@@ -45,13 +50,33 @@ class RetrievalEngine:
         for hit in scored_episodic[:top_k]:
             self.episodic.mark_accessed(hit["id"])
 
-        return {
-            "semantic_facts": semantic_hits,
+        result = {
+            "semantic_facts": scored_semantic[:top_k],
             "episodic_entries": scored_episodic[:top_k],
+            "cross_repo_priors": [],
         }
 
+        if not scored_semantic and self.config.enable_cross_repo_priors:
+            result["cross_repo_priors"] = self.semantic.query_cross_repo_priors(
+                query, exclude_repo=repo, top_k=min(top_k, 3)
+            )
+
+        return result
+
+    def _semantic_score(self, hit: dict) -> float:
+        """score = w_semantic_relevance * similarity + w_trust * trust.
+        If trust-weighted retrieval is disabled (ablation), rank by raw
+        similarity only."""
+        similarity = hit["similarity"]
+        if not self.config.enable_trust_weighted_retrieval:
+            return similarity
+        trust = float(hit["metadata"].get("trust", hit["metadata"].get("confidence", 0.5)))
+        return (
+            self.config.w_semantic_relevance * similarity
+            + self.config.w_trust * trust
+        )
+
     def _importance_score(self, hit: dict) -> float:
-        """score = w_relevance * similarity + w_recency * recency_decay + w_frequency * freq_score"""
         meta = hit["metadata"]
         similarity = hit["similarity"]
 
@@ -59,8 +84,7 @@ class RetrievalEngine:
         recency_score = math.exp(-math.log(2) * age_days / self.config.recency_half_life_days)
 
         access_count = meta.get("access_count", 0)
-        # log-scaled so frequency doesn't dominate for very frequently accessed entries
-        freq_score = math.log1p(access_count) / math.log1p(20)  # normalize against a cap of ~20 accesses
+        freq_score = math.log1p(access_count) / math.log1p(20)
         freq_score = min(freq_score, 1.0)
 
         return (
@@ -70,10 +94,6 @@ class RetrievalEngine:
         )
 
     def run_forgetting_pass(self, repo: str) -> List[str]:
-        """Prune low-importance episodic entries. Returns the list of
-        pruned entry ids. Semantic facts are NOT pruned here — they're
-        already distilled and cheap to keep; only raw episodic log
-        entries grow unbounded and need pruning."""
         all_entries = self.episodic.get_since(repo, since_timestamp=0)
         to_prune = []
 
@@ -81,7 +101,7 @@ class RetrievalEngine:
             meta = entry["metadata"]
             age_days = (time.time() - meta.get("timestamp", time.time())) / 86400
             if age_days < self.config.min_age_before_prune_days:
-                continue  # grace period — never prune very recent entries
+                continue
 
             score = self._retention_score(meta)
             if score < self.config.forgetting_threshold:
@@ -92,12 +112,6 @@ class RetrievalEngine:
         return to_prune
 
     def _retention_score(self, meta: dict) -> float:
-        """Importance score used specifically for forgetting decisions,
-        where there is no query so relevance doesn't apply. Renormalizes
-        the recency/frequency weights (drops w_relevance's share) so the
-        0-1 scale is actually usable against forgetting_threshold, rather
-        than having a fixed relevance-driven floor an old, unused entry
-        can never fall below."""
         age_days = (time.time() - meta.get("timestamp", time.time())) / 86400
         recency_score = math.exp(-math.log(2) * age_days / self.config.recency_half_life_days)
 

@@ -43,6 +43,15 @@ def test_mark_accessed_increments_count(episodic):
 
     raw = episodic.collection.get(ids=[entry.id])
     assert raw["metadatas"][0]["access_count"] == 2
+    
+def test_query_on_freshly_created_empty_collection_does_not_raise(episodic):
+    """Regression test for a real bug hit during the large-scale
+    benchmark run: querying a completely empty, freshly created Chroma
+    collection can raise 'Nothing found on disk' internally rather than
+    returning zero results. A brand-new repo with no memory yet must
+    return an empty list, not crash."""
+    results = episodic.query("anything", repo="brand-new-repo", top_k=5)
+    assert results == []
 
 
 def test_get_since_filters_by_timestamp(episodic):

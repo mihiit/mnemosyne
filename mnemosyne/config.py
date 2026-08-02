@@ -18,48 +18,52 @@ class MnemosyneConfig:
     semantic_collection: str = "semantic_memory"
 
     # --- Embeddings ---
-    # all-MiniLM-L6-v2: fast, free, local, 384-dim. Good default for v1.
-    # Swap to a bigger model (e.g. all-mpnet-base-v2) later if retrieval
-    # quality becomes the bottleneck rather than a nice-to-have.
     embedding_model: str = "all-MiniLM-L6-v2"
 
     # --- LLM (via Ollama, local) ---
     llm_model: str = "llama3.1:8b"
-    llm_temperature: float = 0.2  # low temp: consolidation/contradiction checks want consistency, not creativity
+    llm_temperature: float = 0.2
 
     # --- Retrieval ---
     retrieval_top_k: int = 5
 
-    # Weights for importance-weighted retrieval scoring.
-    # score = w_relevance * cosine_sim + w_recency * recency_score + w_frequency * freq_score
     w_relevance: float = 0.6
     w_recency: float = 0.25
     w_frequency: float = 0.15
 
+    # Weight for trust in SEMANTIC FACT ranking specifically (separate from
+    # the episodic w_relevance/w_recency/w_frequency above, since semantic
+    # facts don't have a meaningful "recency of access" the same way raw
+    # episodic entries do). semantic_score = w_semantic_relevance * similarity
+    # + w_trust * trust. A well-established, repeatedly-corroborated fact
+    # should outrank an equally-relevant but shaky, once-stated one.
+    w_semantic_relevance: float = 0.65
+    w_trust: float = 0.35
+
     # --- Forgetting / decay ---
-    # Half-life in days for recency decay (exponential decay).
     recency_half_life_days: float = 14.0
-    # Entries below this importance score are candidates for pruning.
     forgetting_threshold: float = 0.15
-    # Never prune entries newer than this, regardless of score (grace period).
     min_age_before_prune_days: float = 3.0
 
     # --- Consolidation ---
-    # Number of new episodic entries that triggers a consolidation pass.
     consolidation_batch_size: int = 10
-    # Cosine similarity above which a new fact is considered "about the
-    # same thing" as an existing semantic fact (candidate for merge or
-    # contradiction check).
     semantic_similarity_threshold: float = 0.80
 
     # --- Trust / corroboration tracking ---
-    # When a new fact corroborates an existing one, trust moves toward 1.0
-    # by this fraction of the remaining distance (e.g. 0.7 -> 0.7*(1-trust)
-    # added each time). Diminishing returns as trust approaches 1.0.
     corroboration_boost: float = 0.3
-    # When a new fact contradicts an existing one, trust is multiplied by
-    # this factor (separate from the softer refinement decay).
     contradiction_penalty: float = 0.4
-    # When a new fact merely refines/adds detail to an existing one, the
-    # old fact's trust decays by this factor (superseded, not wrong).
     refinement_decay: float = 0.5
+    # When a new fact contradicts an existing one, if the trust gap between
+    # them is at least this large, auto-resolve in favor of whichever has
+    # higher trust rather than leaving both flagged indefinitely. Below
+    # this margin, the contradiction is genuinely ambiguous and is left
+    # pending for a human or the agent to judge explicitly.
+    contradiction_auto_resolve_margin: float = 0.2
+    
+    # --- Ablation toggles ---
+    # Each defaults to True (full system). Flip individually to isolate
+    # which mechanism drives a given effect in an ablation study.
+    enable_trust_weighted_retrieval: bool = True  # if False, semantic facts rank by similarity only
+    enable_active_contradiction_resolution: bool = True  # if False, contradictions are only ever flagged, never auto-resolved
+    enable_cross_repo_priors: bool = True  # if False, cold-start repos get no cross-repo hints
+    enable_corroboration: bool = True  # if False, a "corroboration" verdict is treated as "different" (creates a duplicate fact instead of reinforcing)
