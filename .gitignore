@@ -8,3 +8,8 @@ data/
 *.log
 .DS_Store
 .env
+# Windows venv layout (in addition to existing venv/ and .venv/)
+Lib/
+Scripts/
+Include/
+pyvenv.cfg
