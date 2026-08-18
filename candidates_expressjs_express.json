@@ -1,0 +1,177 @@
+[
+  {
+    "number": 5205,
+    "title": "Express v5 blockers",
+    "url": "https://github.com/expressjs/express/issues/5205",
+    "comments": 33,
+    "matched_keywords": [
+      "rather than"
+    ],
+    "body_excerpt": "_I started writing this as a reply to https://github.com/expressjs/express/issues/4920#issuecomment-1575599117 but the issue was locked just before I finishing typing my comment._\r\n\r\n@dougwilson Thanks for your continued work on express. I'm sorry you've had to deal with reports of bogus security vulnerabilities as well as folks who don't know better assuming that you've abandoned the project. I hope it doesn't get you down. \u2764\ufe0f\r\n\r\nI do have a question re:\r\n> reach out and I would be happy to Zoo"
+  },
+  {
+    "number": 2495,
+    "title": "Wildcard in route parameter regexp",
+    "url": "https://github.com/expressjs/express/issues/2495",
+    "comments": 32,
+    "matched_keywords": [
+      "rather than"
+    ],
+    "body_excerpt": "Route `'/:username([a-z][a-z-]*)'`\nRoute `'/:username([a-z][a-z-]*)/:project([a-z][a-z0-9-]*)'`\n\nURL `/someone/project`\n\nExpectation is that the second route should match.\nActual result is the first route matches because the \\* is considered as all the things rather than \"zero or more\" `[a-z-]`.\n"
+  },
+  {
+    "number": 897,
+    "title": "req.rawBody is no longer available (regression #34)",
+    "url": "https://github.com/expressjs/express/issues/897",
+    "comments": 32,
+    "matched_keywords": [
+      "no longer"
+    ],
+    "body_excerpt": "req.rawBody is no longer available in 1.5.1, I think it was the new \"formidable\" integration in connect/bodyParser that removed the feature. Is there another way to get the raw content after bodyParser parses the body?\n"
+  },
+  {
+    "number": 3413,
+    "title": "Possible memory leak",
+    "url": "https://github.com/expressjs/express/issues/3413",
+    "comments": 31,
+    "matched_keywords": [
+      "decided"
+    ],
+    "body_excerpt": "So there could be a possible memory leak on Express v4.x\r\n\r\nWe have been in constant communications with the Google App Engine team to troubleshoot our servers crashing thought to high memory usage \r\nand appears to be a memory leak in Express.\r\n\r\n![memory use no load in production](https://user-images.githubusercontent.com/2850976/30178069-ba2641e0-93d5-11e7-9d71-2d8f239ba462.png)\r\n\r\nOur API is served by Express 4.14.0, the screenshot aboce is an instance only receiving 6 health checks from Goog"
+  },
+  {
+    "number": 4736,
+    "title": "router.use middleware is called twice",
+    "url": "https://github.com/expressjs/express/issues/4736",
+    "comments": 30,
+    "matched_keywords": [
+      "instead"
+    ],
+    "body_excerpt": "### Node Version\r\n\r\n12.22.3\r\n\r\n### Express Version\r\n4.17.1\r\n\r\n### Platform\r\n\r\nDarwin 3655368-6357e 18.7.0 Darwin Kernel Version 18.7.0: Tue Jan 12 22:04:47 PST 2021; root:xnu-4903.278.56~1/RELEASE_X86_64 x86_64\r\n\r\n### Subsystem\r\n\r\n_No response_\r\n\r\n### What steps will reproduce the bug?\r\n\r\n**app.js**\r\n\r\n```js\r\nvar express = require('express');\r\nvar router = require('./router');\r\nvar app = express();\r\napp.use(\"/v1\",router);\r\n\r\napp.use(\"*\",(req,res)=>{\r\n  return res.end(\"Started\")\r\n})\r\napp.listen(3"
+  },
+  {
+    "number": 2429,
+    "title": "Deprecate app.param(fn)",
+    "url": "https://github.com/expressjs/express/issues/2429",
+    "comments": 29,
+    "matched_keywords": [
+      "deprecat"
+    ],
+    "body_excerpt": "This is a discussion for the deprecation of the `app.param(fn)` signature. To me, it solves a problem that doesn't exist. I would like to hear arguments to keep it around, hopefully with a use-case it actually solves, before it gets deprecated.\n"
+  },
+  {
+    "number": 5944,
+    "title": "Express v4 -> v5 Migration",
+    "url": "https://github.com/expressjs/express/issues/5944",
+    "comments": 28,
+    "matched_keywords": [
+      "migrat",
+      "instead"
+    ],
+    "body_excerpt": "<!-- We can't debug your app for you, but you can ask questions and we will try to answer them.\r\n\r\nYou can also ask a question in the Node.js Slack community's #express-js channel:\r\n\r\n* Slack invite form: http://www.nodeslackers.com/invite\r\n* #express-js channel: https://node-js.slack.com/archives/C0L827VV4\r\n\r\nIt is super important that you paste in samples of your code (no screenshots of code, [use markdown](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatti"
+  },
+  {
+    "number": 2227,
+    "title": "Deprecate res.send(status, body) format",
+    "url": "https://github.com/expressjs/express/issues/2227",
+    "comments": 26,
+    "matched_keywords": [
+      "deprecat"
+    ],
+    "body_excerpt": "This is a discussion regarding the possibility of deprecating `res.send(status, body)` and other methods (`json`, `jsonp` to name some) that do the same thing, where there is an optional first status argument.\n\nSpecifically, deprecating the optional `status` as a first argument thing.\n\n/cc @defunctzombie \n"
+  },
+  {
+    "number": 762,
+    "title": "New site",
+    "url": "https://github.com/expressjs/express/issues/762",
+    "comments": 24,
+    "matched_keywords": [
+      "instead of",
+      "instead"
+    ],
+    "body_excerpt": "features I'd like:\n- new docs\n- better doc organization (guide, reference, use-cases)\n- \"branding\" aka express logo etc, and lighter design\n- easier addition of apps instead of the browser screenshots right now\n- multiple languages \n"
+  },
+  {
+    "number": 3255,
+    "title": "npm ERR! Failed to parse json",
+    "url": "https://github.com/expressjs/express/issues/3255",
+    "comments": 23,
+    "matched_keywords": [
+      "revert"
+    ],
+    "body_excerpt": "Hello there,\r\n\r\nI'm trying to install npm express on window(window 10) system. It give me error.\r\n```\r\nnpm ERR! file E:\\development\\htdocs\\node\\package.json\r\nnpm ERR! code EJSONPARSE\r\nnpm ERR! Failed to parse json\r\nnpm ERR! Trailing comma in object at 25:3\r\nnpm ERR!   }\r\nnpm ERR!   ^\r\nnpm ERR! File: E:\\development\\htdocs\\node\\package.json\r\nnpm ERR! Failed to parse package.json data.\r\nnpm ERR! package.json must be actual JSON, not just JavaScript.\r\nnpm ERR!\r\nnpm ERR! This is not a bug in npm.\r\nnp"
+  },
+  {
+    "number": 2879,
+    "title": "How to get route name of parent route?",
+    "url": "https://github.com/expressjs/express/issues/2879",
+    "comments": 23,
+    "matched_keywords": [
+      "instead"
+    ],
+    "body_excerpt": "### Goal\n\nFor each incoming request I'd like to log the name of the route that matches the request. So given the request `GET /users/42` which matches the `app.use('/users/:id', ...)` route handler I'd like to get the name `/users/:id`.\n#### Partial solution\n\nI originally used the `route` property on the request object to extract the route name:\n\n``` js\n// given a request to `/users/42`, the routeName below would be `/users/:id`\nvar routeName = req.route.path || req.route.regexp && req.route.reg"
+  },
+  {
+    "number": 1843,
+    "title": "Remove app inheritance, encourage using multiple routers instead of mounting apps",
+    "url": "https://github.com/expressjs/express/issues/1843",
+    "comments": 23,
+    "matched_keywords": [
+      "instead of",
+      "instead"
+    ],
+    "body_excerpt": "See: #1637 \n- Creating a new router should be easier by just doing `var router = express.router()`\n- Need a `router.use()` method to make things closer to a real app or just have people do `.all()` (more of a doc issue)\n- Needs updated examples and docs\n- Remove all documentation about app inheritance\n"
+  },
+  {
+    "number": 2269,
+    "title": "res.send(200) vs res.status(202).end()",
+    "url": "https://github.com/expressjs/express/issues/2269",
+    "comments": 22,
+    "matched_keywords": [
+      "deprecat",
+      "instead"
+    ],
+    "body_excerpt": "Hello,\n\nI'm using `res.send(202)` which gives this warning:\n`express deprecated res.send(status): Use res.status(status).end() instead`\n\nThe documentation says no such thing:\nhttp://expressjs.com/api.html#res.send\n\n> Finally when a Number is given without any of the previously mentioned bodies, then a response body string is assigned for you. For example 200 will respond will the text \"OK\", and 404 \"Not Found\" and so on.\n\nI like this feature because it automagicly puts in the right, human readab"
+  },
+  {
+    "number": 1297,
+    "title": "Match accept type exactly",
+    "url": "https://github.com/expressjs/express/issues/1297",
+    "comments": 22,
+    "matched_keywords": [
+      "rather than"
+    ],
+    "body_excerpt": "I'm probably not quite understanding how to use `request.accepts()` so any input here would be awesome. Basically, I'm trying to write some middleware that only deals with requests where the accept type matches something exactly. Looking at the docs, it seems `request.accepts()` isn't quite useful for this purpose, and I end up having to do this:\n\n```\nvar acceptsType = (req.accepted || []).some(function(type) {\n    return type.value === \"my/type\"\n})\n```\n\nIt's not a huge deal, but if I don't do t"
+  },
+  {
+    "number": 1842,
+    "title": "Migrate from Make to Grunt",
+    "url": "https://github.com/expressjs/express/issues/1842",
+    "comments": 21,
+    "matched_keywords": [
+      "migrat"
+    ],
+    "body_excerpt": "I'm primarily a Windows developer due to work. I'm interested in moving Express from Make to Grunt.js to improve the cross-platform dev experience.\n\nBefore I start hacking on it I'm curious this would be a useful contribution to the project.\n"
+  },
+  {
+    "number": 1793,
+    "title": "connect will deprecate some methods in connect 3.0",
+    "url": "https://github.com/expressjs/express/issues/1793",
+    "comments": 21,
+    "matched_keywords": [
+      "deprecat"
+    ],
+    "body_excerpt": "I get this warning from my app.\n\n```\nconnect.multipart() will be removed in connect 3.0\nvisit https://github.com/senchalabs/connect/wiki/Connect-3.0 for alternative\nconnect.limit() will be removed in connect 3.0\n```\n\nI use `express.bodyParser()` so I guess `connect.bodyParser()` is involved? Then the solution seems to be:\n\n```\napp.use(connect.urlencoded())\napp.use(connect.json())\n```\n\nSince I'm not using `connect` directly I guess the fix needs to be done inside `express`?\n"
+  },
+  {
+    "number": 2412,
+    "title": "Recursive route matching can overflow stack",
+    "url": "https://github.com/expressjs/express/issues/2412",
+    "comments": 20,
+    "matched_keywords": [
+      "instead of",
+      "instead"
+    ],
+    "body_excerpt": "re: express@4.10.0, I searched but could not find a similar issue\n\nSee simple demo here: https://gist.github.com/ahamid/4064dc457a80ced1ab29\n\nAfter upgrading from express 3.x to 4.x, I noticed some behavior that was really hard to track down.  On some routes Express would throw `RangeError: Maximum call stack size exceeded`.  After some experimentation I found that changing routes of the style:\n\n``` js\napp.post(\"thepath\", handler);\napp.put(\"thepath\", handler);\n```\n\nto\n\n``` js\napp.route(\"thepath\""
+  }
+]
